@@ -1,0 +1,9 @@
+3D3 {6}       # Roll number of hits
+S[]{ 2D6 H1 }   # Roll 3D6, keep sum of highest two
+[6+]{*2}     # Explode sixes
+4+           # Filter
+CD6          # Roll to wound
+5+           # Filter
+CD6 4-     # Roll for armor, save on 5+ (remove from pool)
+CD6 2-     # Roll for FNP, save on 3+ (remove from pool)
+P
