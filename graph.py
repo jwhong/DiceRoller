@@ -39,7 +39,7 @@ def makeBarGraph(pool:List[int]):
     plt.axvline(x=q1, color='green', linestyle='--', label='Q1: %0.2f'%q1)
     plt.axvline(x=q2, color='red',   linestyle='--', label='Q2: %0.2f'%q2)
     plt.axvline(x=q3, color='blue',  linestyle='--', label='Q3: %0.2f'%q3)
-    plt.xlabel('Pool value')
+    plt.xlabel('Value')
     plt.ylabel('Frequency')
     plt.title('Pool distribution for %d values'%len(pool))
     plt.xticks(range(min(counter.keys()), max(counter.keys()) + 1))
