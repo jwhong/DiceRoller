@@ -4,12 +4,13 @@
     [6+]{*2}  # Explode 6s
     5+        # Hits on 5+
     CD6       # Reroll
+    [4-] {CD6} # Reroll failures to wound on 5+
     5+        # Wound on 5+
-    [5-]      # Devastating wounds, only reroll 6 or less
+    [5-]      # Devastating wounds, only armor save 6 or less
     {
         CD6   # Reroll
         2-    # Armor save is 3+
     }
-    C         # Count dice
+    C         # Count wounds
 }
 G # Graph it

@@ -28,9 +28,6 @@ def findQuartiles(pool)->Tuple[int,int,int]:
         return rval
     return findInterpolatedValueFromIndex(l/4), findInterpolatedValueFromIndex(l/2), findInterpolatedValueFromIndex(3*l/4)
 
-
-
-
 def makeBarGraph(pool:List[int]):
     counter = Counter(pool)
     plt.figure(figsize=(10, 5))
