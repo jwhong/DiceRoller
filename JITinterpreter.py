@@ -3,11 +3,13 @@ from graph import makeBarGraph
 from numpy import random
 from typing import *
 from collections import defaultdict
+from dataclasses import dataclass
 
 # Started at 2.75 runtime
 # Now at 2.41 after moving from lists for dice to a dicepool class
 # Now at 1.766 after reducing the number of regular expressions and doing simple string comparisons for next operator
 # Now 1.261 after using a dictionary to look up the next operation instead of constantly cycling
+# Now 0.433 after implementing JIT compiler
 
 class DicePool:
     def __init__(self, dice:Iterable[int]=None, init_pool=None):
@@ -40,7 +42,7 @@ class DicePool:
         rval = 0
         for k, v in self.vals.items():
             rval += k*v
-        return sum
+        return rval
     def __repr__(self):
         if len(self.vals) == 0:
             return "Empty pool"
@@ -87,7 +89,7 @@ class DicePool:
                 break
         return DicePool(init_pool=ss)
     def copy(self):
-        return DicePool(init_pool=self.vals.copy())
+        return DicePool(init_pool=self.vals)
     def asList(self):
         rval = []
         for k, v in self.vals.items():
@@ -95,22 +97,134 @@ class DicePool:
                 rval.append(k)
         return rval
 
+@dataclass
+class VMState:
+    pool       : DicePool
+    arg_stack  : List[int]
+    nest_level : int
 
+class Instruction:
+    def setDebugParams(self, script_i:int):
+        self.script_i = script_i # Index of this instruction in the script
+    def run(self, vm:VMState):
+        raise NotImplemented("Should be overridden by subclass")
+
+class Executor:
+    def __init__(self, instructions:Iterable[Instruction]):
+        self.instructions = instructions
+    def run(self, pool_override:DicePool=None)->VMState:
+        s = VMState(DicePool() if pool_override is None else pool_override.copy(), [], 0)
+        for inst in self.instructions:
+            inst.run(s) # The instructions will mutate s
+        return s
+
+class IntValue(Instruction):
+    pass
+
+class IntLiteral(IntValue):
+    def __init__(self, val:int):
+        self.val = val
+    def run(self, vm:VMState):
+        vm.arg_stack.append(self.val)
+
+class DoS(IntValue):
+    def run(self, vm:VMState):
+        vm.arg_stack.append(vm.pool.sum())
+        # self.print("Sum is %d" % self.arg_stack[0])
+
+class DoC(IntValue):
+    def run(self, vm:VMState):
+        vm.arg_stack.append(len(vm.pool))
+        # self.print("Count is %d" % self.arg_stack[0])
+
+class DoD(Instruction):
+    def run(self, vm:VMState):
+        n_sides = vm.arg_stack.pop()
+        n_dice  = vm.arg_stack.pop()
+        vm.pool = DicePool(random.randint(1, n_sides + 1, n_dice))
+        #self.print("Rolled %dD%d, got:" % (n_dice, n_sides))
+        #self.print(self.pool)
+
+class DoGeq(Instruction):
+    def run(self, vm:VMState):
+        thresh = vm.arg_stack.pop()
+        #start_len = len(vm.pool)
+        vm.pool = vm.pool.getGeqSubset(thresh)
+        #vm.print("Pass on %d+" % thresh)
+        #end_len = len(vm.pool)
+        #removed = start_len - end_len
+        #vm.print("Removed %d dice, leaving %d" % (removed, end_len))
+
+class DoPlusX(Instruction):
+    def run(self, vm:VMState):
+        vm.pool.addDie(vm.arg_stack.pop())
+        #self.print("Added +%d to pool" % to_append)
+
+class DoLeq(Instruction):
+    def run(self, vm:VMState):
+        thresh = vm.arg_stack.pop()
+        vm.pool = vm.pool.getLeqSubset(thresh)
+
+class DoMult(Instruction):
+    def run(self, vm:VMState):
+        vm.pool.mulInt(vm.arg_stack.pop())
+
+class DoMinusX(Instruction):
+    def run(self, vm:VMState):
+        vm.pool.addDie(-1*vm.arg_stack.pop())
+
+class DoH(Instruction):
+    def run(self, vm:VMState):
+        count = vm.arg_stack.pop()
+        vm.pool = vm.pool.getTop(count)
+
+class DoL(Instruction):
+    def run(self, vm:VMState):
+        count = vm.arg_stack.pop()
+        vm.pool = vm.pool.getBottom(count)
+
+class DoG(Instruction):
+    def run(self, vm:VMState):
+        makeBarGraph(vm.pool)
+
+class DoCurlyBlock(Instruction):
+    def __init__(self, ilist:Iterable[Instruction]):
+        self.ilist = ilist
+    def run(self, vm:VMState, pool_override:DicePool=None):
+        e = Executor(self.ilist)
+        reps = vm.arg_stack.pop()
+        pool_arg = vm.pool.copy() if pool_override is None else pool_override
+        for i in range(reps):
+            sub_s = e.run(pool_arg)
+            if len(sub_s.arg_stack):
+                vm.pool.addDice(sub_s.arg_stack)
+            else:
+                vm.pool.addPool(sub_s.pool)
+
+class DoSquareBlock(Instruction):
+    def __init__(self, filt_ilist:Iterable[Instruction], curly_block:Union[DoCurlyBlock,None]):
+        self.filt_ilist = filt_ilist
+        self.curly_block = curly_block
+    def run(self, vm:VMState):
+        e = Executor(self.filt_ilist)
+        substate = e.run(vm.pool)
+        vm.pool.subPool(substate.pool)
+        if self.curly_block is not None:
+            self.curly_block.run(vm, substate.pool)
 
 class Interpreter:
     ws_re         = re.compile(r'\s+')
     int_re        = re.compile(r'\d+')
-
-    def __init__(self, script, pool=None, end_re=None, nest_level=None):
+    def __init__(self, script, end_re=None, nest_level=None):
         # Purge all comments from the script
         script = ''.join(re.split(r'#.*\n', script+'\n'))
         self.original_script = script
         self.script_tail = script
-        self.pool = pool if pool else DicePool()
-        self.arg_stack = [] # Stack of integers
         self.end_re = end_re if end_re else None
         self.nest_level = nest_level if nest_level is not None else 0
         self.verbose = 0
+        self.arg_stack_len = 0
+        self.ilist = []
     def print(self, *args):
         if not self.verbose:
             return
@@ -129,123 +243,101 @@ class Interpreter:
         rval = self.script_tail[:len(matching)]
         self.script_tail = self.script_tail[len(matching):]
         return rval
-    def grabPostFixArgument(self):
-        # This is kinda ugly b/c we need to break the order of interpretation...
+    def grabPostFixArgument(self)->bool:
         self.advanceByMatch(self.ws_re)
         # The only valid post-fix values are integer literals, S or C
         if matched := self.advanceByMatch(self.int_re):
-            return int(matched)
+            self.ilist.append(IntLiteral(int(matched)))
+            self.arg_stack_len+=1
+            return True
         if self.advanceByMatch('S'):
-            return self.pool.sum()
+            self.ilist.append(DoS())
+            self.arg_stack_len += 1
+            return True
         if self.advanceByMatch('C'):
-            return len(self.pool)
-        return None
+            self.ilist.append(DoC())
+            self.arg_stack_len += 1
+            return True
+        return False
     def doWS(self):
         return self.advanceByMatch(self.ws_re)
     def doInt(self):
         matched = self.advanceByMatch(self.int_re)
         if matched:
-            self.arg_stack.append(int(matched))
+            self.ilist.append(IntLiteral(int(matched)))
+            self.arg_stack_len+=1
         return matched
     def doS(self):
-        self.arg_stack.append(self.pool.sum())
-        self.print("Sum is %d" % self.arg_stack[0])
+        self.ilist.append(DoS())
+        self.arg_stack_len += 1
     def doC(self):
-        self.arg_stack.append(len(self.pool))
-        self.print("Count is %d" % self.arg_stack[0])
+        self.ilist.append(DoC())
+        self.arg_stack_len += 1
     def doD(self):
-        n_dice  = self.arg_stack.pop()
-        n_sides = self.grabPostFixArgument()
-        self.pool = DicePool(random.randint(1, n_sides+1, n_dice))
-        self.print("Rolled %dD%d, got:"%(n_dice, n_sides))
-        self.print(self.pool)
+        self.grabPostFixArgument()
+        self.ilist.append(DoD())
+        self.arg_stack_len -= 2
     def doPlus(self):
         # Is this a "X+" filter or a "+X" appending to the pool?
-        if len(self.arg_stack):
+        if self.arg_stack_len > 0:
             # This is an X+
-            thresh = self.arg_stack.pop()
-            start_len = len(self.pool)
-            self.pool = self.pool.getGeqSubset(thresh)
-            self.print("Pass on %d+"%thresh)
-            end_len = len(self.pool)
-            removed = start_len - end_len
-            self.print("Removed %d dice, leaving %d"%(removed,end_len))
+            self.ilist.append(DoGeq())
         else:
             # This is a +X
-            to_append = self.grabPostFixArgument()
-            self.pool.addDie(to_append)
-            self.print("Added +%d to pool"%to_append)
+            assert(self.grabPostFixArgument())
+            self.ilist.append(DoPlusX())
+        self.arg_stack_len -= 1
     def doMinus(self):
-        if len(self.arg_stack):
-            thresh = self.arg_stack.pop()
-            start_len = len(self.pool)
-            self.pool = self.pool.getLeqSubset(thresh)
-            self.print("Pass on %d-" % thresh)
-            end_len = len(self.pool)
-            removed = start_len - end_len
-            self.print("Removed %d dice, leaving %d" % (removed, end_len))
+        if self.arg_stack_len > 0:
+            # This is an X+
+            self.ilist.append(DoLeq())
         else:
-            # This is a -X
-            to_append = self.grabPostFixArgument()
-            to_append *= -1
-            self.pool.add(to_append)
-            self.print("Added %d to pool" % to_append)
+            # This is a +X
+            assert(self.grabPostFixArgument())
+            self.ilist.append(DoMinusX())
+        self.arg_stack_len -= 1
     def doMult(self):
-        factor = self.grabPostFixArgument()
-        self.pool.mulInt(factor)
-        self.print("Multiplied pool by %d, pool has %d elements"%(factor, len(self.pool)))
+        assert(self.grabPostFixArgument())
+        self.ilist.append(DoMult())
+        self.arg_stack_len -= 1
     def doH(self):
-        count = self.grabPostFixArgument()
-        self.pool = self.pool.getTop(count)
-        self.print("Grabbed %d highest elements"%count)
+        self.grabPostFixArgument()
+        self.ilist.append(DoH())
+        self.arg_stack_len -= 1
     def doL(self):
-        count = self.grabPostFixArgument()
-        self.pool = self.pool.getBottom(count)
-        self.print("Grabbed %d lowest elements" % count)
-    def doCurlyBracket(self, pool_override=None):
-        repeat_count = self.arg_stack.pop() if len(self.arg_stack) else 1
-        new_tail = None
-        new_entries = DicePool()
-        for i in range(repeat_count):
-            self.print("{} run %d"%i)
-            sub = Interpreter(self.script_tail,
-                              pool_override.copy() if pool_override is not None else self.pool.copy(),
-                              '}', self.nest_level+1)
-            sub.run()
-            new_tail = sub.script_tail
-            # By convention: If the sub left arguments in its stack, append those to the pool.
-            # Otherwise, append the subpool to the pool.
-            if len(sub.arg_stack):
-                new_entries.addDice(sub.arg_stack)
-            else:
-                new_entries.addPool(sub.pool)
-        self.print("{} finished, adding %d new entries:"%len(new_entries))
-        self.print(new_entries)
-        self.pool.addPool(new_entries)
-        self.script_tail = new_tail
-    def doSquareBracket(self):
-        self.print("[] starting")
+        self.grabPostFixArgument()
+        self.ilist.append(DoL())
+        self.arg_stack_len -= 1
+    def doCurlyBracket(self):
+        self.ilist.append(self.doCaptiveCurlyBracket())
+    def doCaptiveCurlyBracket(self):
         sub = Interpreter(self.script_tail,
-                          self.pool.copy(),
-                          ']', self.nest_level+1)
-        sub.run()
+                          '}', self.nest_level + 1)
+        sub.compile()
         self.script_tail = sub.script_tail
+        if self.arg_stack_len < 1:
+            self.ilist.append(IntLiteral(1))
+            self.arg_stack_len += 1
+        self.arg_stack_len -= 1
+        return DoCurlyBlock(sub.ilist)
+    def doSquareBracket(self):
+        sub1 = Interpreter(self.script_tail,
+                          ']', self.nest_level+1)
+        sub1.compile()
+        self.script_tail = sub1.script_tail
+        ilist1 = sub1.ilist
 
-        # Remove all elements of the subpool from the main pool
-        self.pool.subPool(sub.pool)
-        self.print("[] finished, subpool has %d entries:" % len(sub.pool))
-        self.print(sub.pool)
-
-        # If there is a curly block after this, we need to pass it the sub pool
         self.doWS()
-        self.doCurlyBracket(sub.pool)
+
+        if self.script_tail[0] == '{':
+            self.script_tail = self.script_tail[1:]
+            captive_curly = self.doCaptiveCurlyBracket()
+        else:
+            captive_curly = None
+        self.ilist.append(DoSquareBlock(ilist1, captive_curly))
     def doG(self):
-        matched = self.advanceByMatch('G')
-        if matched:
-            self.print("Graphing...")
-            makeBarGraph(self.pool.asList())
-        return matched
-    def run(self):
+        self.ilist.append(DoG())
+    def compile(self)->Executor:
         single_letter_ops = {
             'S':self.doS,
             'C':self.doC,
@@ -271,14 +363,16 @@ class Interpreter:
                 # We found the end condition, we rejoin the parent
                 break
             raise SyntaxError("Can't find a valid next token!")
+        return Executor(self.ilist)
 
 import cProfile
 import pstats
 
 if 1:
     inter = Interpreter(open('test.txt').read())
-    #inter.run()
-    cProfile.run('inter.run()', 'out.dat')
+    e = inter.compile()
+    #e.run()
+    cProfile.run('e.run()', 'out.dat')
     p = pstats.Stats('out.dat')
     p.sort_stats('cumulative')
     p.print_stats()
