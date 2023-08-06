@@ -1,15 +1,16 @@
-1000 { # Do the rest of the script 1000 times
-    80D6      # Roll 80D6
+V0 # Set verbosity to 2 (prints nest level 0 and 1)
+1000{
+    100D6     # Roll 100D6
     [1-]{CD6} # Reroll 1s
     [6+]{*2}  # Explode 6s
-    5+        # Hits on 5+
+    3+        # Hits on 5+
     CD6       # Reroll
-    [4-] {CD6} # Reroll failures to wound on 5+
+    [[5+]] {CD6} # Reroll failures to wound on 5+
     5+        # Wound on 5+
-    [5-]      # Devastating wounds, only armor save 6 or less
+    [5-]    # Devastating wounds, only armor save 6 or less
     {
         CD6   # Reroll
-        2-    # Armor save is 3+
+        [3+]  # Armor save is 3+
     }
     C         # Count wounds
 }

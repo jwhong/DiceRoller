@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import numpy as np
 from collections import Counter
 from typing import *
 
@@ -28,7 +27,7 @@ def findQuartiles(pool)->Tuple[int,int,int]:
         return rval
     return findInterpolatedValueFromIndex(l/4), findInterpolatedValueFromIndex(l/2), findInterpolatedValueFromIndex(3*l/4)
 
-def makeBarGraph(pool:List[int]):
+def makeBarGraph(pool):
     counter = Counter(pool)
     plt.figure(figsize=(10, 5))
     plt.bar(counter.keys(), counter.values(), color='skyblue', width=0.975)
