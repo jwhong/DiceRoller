@@ -150,6 +150,12 @@ class RunG(RunnableUnit):
             estate.nestPrint("Graphing...")
         makeBarGraph(estate.pool)
 
+class RunP(RunnableUnit):
+    def run(self, estate:ExecState):
+        if estate.shouldPrint():
+            print("Pool: ", estate.pool)
+            print("Stack: ", estate.arg_stack)
+
 class RunCurlyBlock(RunnableUnit):
     def __init__(self, ilist:Iterable[RunnableUnit]):
         self.ilist = ilist

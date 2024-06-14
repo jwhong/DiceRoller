@@ -156,6 +156,8 @@ class Compiler:
         self.addInstruction(RunSquareBlock, ilist1, captive_curly)
     def doG(self):
         self.addInstruction(RunG)
+    def doP(self):
+        self.addInstruction(RunP)
     def doV(self):
         self.requirePostFixArgument()
         self.addInstruction(RunV)
@@ -174,6 +176,7 @@ class Compiler:
             'L':self.doL,
             'G':self.doG,
             'V':self.doV,
+            'P':self.doP,
         }
         try:
             while len(self.script_tail):
