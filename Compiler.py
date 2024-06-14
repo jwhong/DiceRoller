@@ -94,6 +94,7 @@ class Compiler:
     def doD(self):
         if self.arg_stack_len == 0:
             self.addInstruction(IntLiteral, 1)
+            self.arg_stack_len += 1
         self.requirePostFixArgument()
         self.addInstruction(RunD)
         self.arg_stack_len -= 2
