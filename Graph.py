@@ -41,9 +41,10 @@ def determineIncrement(counter:Counter)->int:
             return span
     assert(False, "Should never get here!")
 
-def makeBarGraph(pool):
+def makeBarGraph(pool, increment=None):
     counter = Counter(pool)
-    increment = determineIncrement(counter)
+    if increment is None:
+        increment = determineIncrement(counter)
     plt.figure(figsize=(10, 5))
     pool_len = len(pool)
     percentages = [100*v / pool_len for v in counter.values()]
