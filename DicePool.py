@@ -56,6 +56,10 @@ class DicePool:
             if k <= thresh:
                 ss[k] = v
         return DicePool(init_pool=ss)
+    def getEqSubset(self, val):
+        ss = defaultdict(int)
+        ss[val] = self.vals[val]
+        return DicePool(init_pool=ss)
     def getTop(self, count):
         ss = defaultdict(int)
         sorted_keys = sorted(self.vals.keys(), reverse=True)
@@ -80,6 +84,8 @@ class DicePool:
                 ss[k] = count
                 break
         return DicePool(init_pool=ss)
+    def getCountOfVal(self, val):
+        return self.vals[val]
     def copy(self):
         return DicePool(init_pool=self.vals)
     def asList(self):
